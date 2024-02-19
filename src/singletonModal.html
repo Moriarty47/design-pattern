@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>实现一个全局的模态框</title>
+  </head>
+  <body>
+    <button id="open" type="button">打开弹窗</button>
+    <button id="close" type="button">关闭弹窗</button>
+  </body>
+  <script>
+    const Modal = (function () {
+      let modal = null;
+      return function () {
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.innerHTML = '全局唯一Modal';
+          modal.id = 'modal';
+          modal.style.display = 'none';
+          document.body.appendChild(modal);
+        }
+        return modal;
+      };
+    })();
+
+    document.getElementById('open').addEventListener('click', () => {
+      const modal = new Modal();
+      modal.style.display = 'block';
+    });
+    document.getElementById('close').addEventListener('click', () => {
+      const modal = new Modal();
+      modal.style.display = 'none';
+    });
+  </script>
+</html>
