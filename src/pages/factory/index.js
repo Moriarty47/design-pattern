@@ -8,7 +8,7 @@ const liLei = {
   career: 'coder',
 };
 
-function User(name, age, career) {
+function User1(name, age, career) {
   this.name = name;
   this.age = age;
   this.career = career;
@@ -32,7 +32,7 @@ function ProductManager(name, age) {
   this.work = ['订会议室', '写PRD', '催更'];
 }
 
-function Factory(name, age, career) {
+function Factory1(name, age, career) {
   switch (career) {
     case 'coder':
       return new Coder(name, age);

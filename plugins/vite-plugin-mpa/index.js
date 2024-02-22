@@ -1,9 +1,12 @@
 import path from 'path';
 import { parse } from 'url';
-import { getHtmlContent, getPageData, getPages, isMPA, log, resolve } from './utils';
+import { getHtmlContent, getPageData, getPages, isMPA, resolve } from './utils';
 
 const PLUGIN_NAME = 'vite-plugin-mpa';
+
 let pageName;
+
+let i = 0;
 
 /**
  * @name vite-plugin-mpa
@@ -23,9 +26,11 @@ export default function vitePluginMpa(
   /** @type {import('vite').UserConfig} */
   let config;
 
+
+
   return {
     enforce: 'post',
-    name: PLUGIN_NAME,
+    name: `${PLUGIN_NAME}:${i++}`,
     configResolved(resolvedConfig) {
       const isBuild = resolvedConfig.mode === 'production';
 

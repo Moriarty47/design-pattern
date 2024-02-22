@@ -44,8 +44,14 @@ export function last(arr) {
   return arr[arr.length - 1];
 }
 
+export function toArray(arr) {
+  if (!arr) return [];
+  if (Array.isArray(arr)) return arr;
+  return [arr];
+}
+
 export function getTitle(title) {
-  return title.match(/\/\* (.*) \*\//)[1] || 'Default';
+  return title.match(/\/\* (.*) \*\//)?.[1] || 'Default';
 }
 
 export function getPages(options) {

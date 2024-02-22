@@ -7,13 +7,21 @@ export default async function getFirstLine(filePath) {
       throw new Error('File not found!');
     }
 
-    const readStream = fs.createReadStream(filePath);
-    const reader = readline.createInterface({ input: readStream });
+    const readStream = fs.createReadStream(filePath, 'utf-8');
+    const reader = readline.createInterface({ input: readStream, output: process.stdout, terminal: false });
+
+    let lineCount = 0;
 
     const line = await new Promise(resolve => {
-      reader.on('line', line => {
+      reader.on('close', () => {
+        if (lineCount === 0) {
+          resolve('');
+        }
+      });
+      reader.on('line', res => {
+        lineCount++;
         reader.close();
-        resolve(line);
+        resolve(res);
       });
     });
     readStream.close();
