@@ -50,53 +50,195 @@ export function toArray(arr) {
   return [arr];
 }
 
-export function getTitle(title) {
-  return title.match(/\/\* (.*) \*\//)?.[1] || 'Default';
+export function matchHtmlCreateRule(content) {
+  return content.match(/\/\* (.*) \*\//)?.[1];
 }
 
+export function matchJsCreateRule(content) {
+  return content.match(/<!-- (.*) -->/)?.[1] !== 'js-in-html';
+}
+
+export function getTitle(content) {
+  const title = matchHtmlCreateRule(content);
+  if (title !== null && title !== undefined) {
+    return title || 'New Page';
+  }
+  return null;
+}
+
+/**
+ * @param {string} htmlUrl 
+ * @returns {string}
+ */
+function getJsUrl(htmlUrl) {
+  return htmlUrl.replace(/\.html$/, '.js');
+}
+
+/**
+ * @param {string} jsUrl 
+ * @returns {string}
+ */
+function getHtmlUrl(jsUrl) {
+  return jsUrl.replace(/\.js$/, '.html');
+}
+
+/**
+ * @typedef FileInfo
+ * @property {string} fileUrl
+ * @property {'js' | 'html'} fileExt
+ * @property {string} filename
+ * @property {string} fileFullname
+ * @property {string} fileAbsUrl
+ * @property {string} fileDirPath
+ */
+
+/**
+ * 获取目标目录下的所有js与html文件
+ * @param {string} dir 
+ * @returns {FileInfo[]}
+ */
+function getFilesOfTargetDir(dir) {
+  return globSync([
+    `${dir}/index.js`,
+    `${dir}/index.html`,
+    `${dir}/*/*.js`,
+    `${dir}/*/*.html`,
+    `!${dir}/index/*.js`,
+    `!${dir}/index/*.html`,
+  ])
+    .map(url => {
+      const fileUrl = url.replace(/\\/g, '/');
+      const fileExt = path.extname(fileUrl).slice(1);
+      const fileFullname = path.basename(fileUrl);
+      return {
+        fileUrl,
+        fileExt,
+        filename: fileFullname.replace('.' + fileExt, ''),
+        fileFullname,
+        fileAbsUrl: resolve(fileUrl),
+        fileDirPath: path.dirname(fileUrl),
+      };
+    });
+}
+
+/** 
+ * @typedef MpaInputItem
+ * @property {string} title
+ * @property {string} filename
+ * @property {string} tempalte
+ * @property {string} entry
+ */
+/** @typedef {Record<string, MpaInputItem>} MpaPages */
+/** @typedef {Record<string, string>} MpaInput */
+/**
+ * 
+ * @param {string} templateUrl 
+ * @param {FileInfo} file 
+ * @param {MpaPages} pages 
+ * @param {MpaInput} input 
+ * @param {string} [title='New Page'] 
+ */
+function saveInfo(templateUrl, file, pages, input, title = 'New Page') {
+  const pageUrl = `${file.fileDirPath}/${file.filename}`;
+  if (!pages[pageUrl]) {
+    pages[pageUrl] = {
+      title,
+      filename: file.filename,
+      template: templateUrl,
+      entry: file.fileFullname.match(/.html$/) ? undefined : file.fileFullname,
+    };
+    input[pageUrl] = templateUrl;
+  }
+}
+
+/**
+ * 处理JS文件
+ * @param {FileInfo} file
+ * @param {MpaPages} pages 
+ * @param {MpaInput} input 
+ */
+function processJsFile(file, pages, input) {
+  const { fileAbsUrl, filename } = file;
+  const title = getTitle(getFirstLineSync(fileAbsUrl));
+  // 不是一个入口文件
+  if (title === null) {
+    log('不是入口文件', filename);
+    return;
+  }
+  // 是一个入口文件
+  const htmlAbsUrl = getHtmlUrl(fileAbsUrl);
+  if (!fs.existsSync(htmlAbsUrl)) {
+    // 不存在对应的HTML文件，则创建HTML文件
+    fs.writeFileSync(htmlAbsUrl, ejs.render(templateHTML, {
+      content: { title }
+    }), { encoding: 'utf-8' });
+    log('创建HTML文件', htmlAbsUrl);
+  }
+
+  saveInfo(htmlAbsUrl, file, pages, input, title);
+}
+
+function getHtmlTitle(content) {
+  return content.match(/<title>(.*)<\/title>/)?.[1] || undefined;
+}
+
+/**
+ * 处理HTML文件
+ * @param {FileInfo} file
+ * @param {MpaPages} pages 
+ * @param {MpaInput} input 
+ */
+function processHtmlFile(file, pages, input) {
+  const { fileAbsUrl, filename } = file;
+  const matched = matchJsCreateRule(getFirstLineSync(fileAbsUrl));
+  if (matched) {
+    const jsAbsUrl = getJsUrl(fileAbsUrl);
+    if (!fs.existsSync(jsAbsUrl)) {
+      log('jsAbsUrl', jsAbsUrl);
+      // 该HTML文件不存在对应的JS文件，则创建JS文件
+      fs.writeFileSync(jsAbsUrl, `/* ${filename} */`, { encoding: 'utf-8' });
+      log('创建JS文件', jsAbsUrl);
+    }
+    saveInfo(fileAbsUrl, file, pages, input);
+  } else {
+    log('不需要JS文件', filename);
+    const title = getHtmlTitle(fs.readFileSync(fileAbsUrl, 'utf-8'));
+    saveInfo(fileAbsUrl, file, pages, input, title);
+  }
+
+}
+
+/**
+ * 处理文件
+ * @param {FileInfo[]} files 
+ * @returns {{ pages: MpaPages, input: MpaInput }}
+ */
+function processFiles(files) {
+  const pages = {};
+  const input = {};
+  for (let i = 0, len = files.length; i < len; i += 1) {
+    const file = files[i];
+    if (file.fileExt === 'js') {
+      processJsFile(file, pages, input);
+    } else if (file.fileExt === 'html') {
+      processHtmlFile(file, pages, input);
+    }
+  }
+  return { pages, input };
+}
+
+/**
+ * 获取页面配置
+ * @param {import('./index').MpaOption} options 
+ * @returns {{ pages: MpaPages, input: MpaInput }}
+ */
 export function getPages(options) {
   const dir = options.pagesDir;
-  const filesUrl = globSync([`${dir}/**/index.js`, `${dir}/**/*.html`]).map(url => url.replace(/\\/g, '/'));
-  const files = filesUrl.map(url => [url, path.dirname(url), path.basename(url), path.extname(url)]);
-  const input = {};
-  const pages = files.reduce((page, file) => {
-    if (!file) return page;
-    const [fileUrl, filePath, fileName, ext] = file || [];
-    const htmlName = fileUrl.replace(/.js$/, '.html');
-    const htmlUrl = resolve(htmlName);
-    let title;
-    if (ext === '.js') {
-      title = getTitle(getFirstLineSync(fileUrl) || title);
-      if (!globSync(htmlName)[0]) {
-        // 不存在html，则生成新的html
-        fs.writeFileSync(htmlUrl, ejs.render(templateHTML, {
-          content: { title }
-        }), { encoding: 'utf-8' });
-      }
-    }
-    // 获取title
-    let content = fs.readFileSync(htmlUrl, { encoding: 'utf-8' });
-    if (title) {
-      content = content.replace(/<title>(.*?)>/, `<title>${title}</title>`);
-      fs.writeFileSync(htmlUrl, ejs.render(content, {
-        content: { title }
-      }), { encoding: 'utf-8' });
-    } else {
-      title = content.match(/<title>(.*)<\/title>/)[1] || 'Default';
-    }
-
-    const url = htmlName.replace('.html', '');
-    if (!page[url]) {
-      page[url] = {
-        title,
-        entry: fileName.replace(/.html$/, '.js'),
-        filename: fileName,
-        template: resolve(htmlUrl),
-      };
-      input[url] = page[url].template;
-    }
-    return page;
-  }, {});
+  const files = getFilesOfTargetDir(dir);
+  // log('files', files);
+  const { pages, input } = processFiles(files);
+  log('pages', pages);
+  // log('input', input);
   return { pages, input };
 }
 
@@ -150,6 +292,7 @@ export async function getHtmlContent(options) {
 
   const entryJsPath = (() => {
     if (isMPA) {
+      if (pageEntry === '') return null;
       if (pageEntry.includes('src')) {
         return `${pageEntry.replace('/./', '/').replace('//', '/')}`;
       }
@@ -194,7 +337,9 @@ export async function getHtmlContent(options) {
     content = content.replace(/\n|\r/g, '').replace(/<body(.*?)>(.*)<\/body>/, (_, $1, $2) => `<body${$1}><ul>${links.join('').replace(/,/g, ' ')}</ul>\n${$2}</body>`);
   }
   if (isMPA) {
-    content = content.replace('</body>', `<script type="module" src="${entryJsPath}"></script></body>`);
+    if (entryJsPath) {
+      content = content.replace('</body>', `<script type="module" src="${entryJsPath}"></script></body>`);
+    }
   }
 
   const { data, ejsOptions } = injectOptions || {
@@ -227,6 +372,6 @@ export async function getHtmlContent(options) {
  * @property {string} templatePath
  */;
 
-export function log(obj, label = 'default') {
+export function log(label = 'Output', obj) {
   console.log(`\n${label} >>>>>> \n`, obj);
 }

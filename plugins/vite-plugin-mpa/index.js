@@ -1,6 +1,8 @@
 import path from 'path';
 import { parse } from 'url';
-import { getHtmlContent, getPageData, getPages, isMPA, resolve } from './utils';
+import micromatch from 'micromatch';
+import { getHtmlContent, getPageData, getPages, getTitle, isMPA, matchJsCreateRule, resolve } from './utils';
+import getFirstLineSync from '../../helpers/getFirstLineSync';
 
 const PLUGIN_NAME = 'vite-plugin-mpa';
 
@@ -8,31 +10,54 @@ let pageName;
 
 let i = 0;
 
+/** @typedef {import('vite').PluginOption & { pagesDir: string, jumpTarget: '_self' | '_blank' }} MpaOption */
 /**
  * @name vite-plugin-mpa
- * @param {import('vite').PluginOption & { pagesDir?: string, jumpTarget?: '_self' | '_blank' }} userOptions 
+ * @param {Partial<MpaOption>} userOptions 
  * @return {import('vite').Plugin}
  */
 export default function vitePluginMpa(
   userOptions = {}
 ) {
+  /** @type {MpaOption} */
   const options = {
-    pagesDir: 'src/pages',
     ...userOptions,
+    pagesDir: userOptions.pagesDir || 'src/pages',
     appType: 'mpa',
     jumpTarget: '_self'
   };
 
   /** @type {import('vite').UserConfig} */
   let config;
-
-
+  let jsGlobs;
+  let htmlGlobs;
 
   return {
     enforce: 'post',
     name: `${PLUGIN_NAME}:${i++}`,
+    config(c) {
+      if (!c.server) {
+        c.server = {};
+      }
+      if (!c.server.watch) {
+        c.server.watch = {};
+      }
+      c.server.watch.disableGlobbing = false;
+    },
     configResolved(resolvedConfig) {
       const isBuild = resolvedConfig.mode === 'production';
+
+      root = resolvedConfig.root;
+
+      const dir = options.pagesDir;
+      jsGlobs = [
+        `${dir}/index.js`,
+        `${dir}/*/*.js`,
+      ];
+      htmlGlobs = [
+        `${dir}/index.html`,
+        `${dir}/*/*.html`,
+      ];
 
       if (!options.pages) {
         const { pages, input } = getPages(options);
@@ -42,6 +67,41 @@ export default function vitePluginMpa(
       config = resolvedConfig;
     },
     configureServer(server) {
+      const allGlobs = [...jsGlobs, ...htmlGlobs];
+      server.watcher.add(allGlobs);
+      server.watcher.on('unlink', handleFileUnlink);
+      server.watcher.on('change', handleFileChange);
+      server.watcher.on('add', handleFileAdd);
+
+      function handleFileAdd(file) {
+        isMatchGlobs('add', file);
+      }
+
+      function handleFileChange(file) {
+        const firstLine = getFirstLineSync(file);
+        if (micromatch.isMatch(file, jsGlobs) && getTitle(firstLine)) {
+          console.log('js changed', file);
+          server.restart();
+        } else if (micromatch.isMatch(file, htmlGlobs) && !matchJsCreateRule(firstLine)) {
+          console.log('html changed', file);
+          server.restart();
+        }
+      }
+
+      function handleFileUnlink(file) {
+        isMatchGlobs('unlink', file);
+      }
+
+      function isMatchGlobs(type, file, fn) {
+        if (micromatch.isMatch(file, allGlobs)) {
+          fn?.();
+          console.log(type, file);
+          return true;
+        }
+        return false;
+      }
+
+
       return () => {
         server.middlewares.use(async (req, res, next) => {
           const getPage404 = () => {
@@ -92,13 +152,13 @@ export default function vitePluginMpa(
             url,
             await getHtmlContent({
               isMPA: isMPA(config),
-              entry: options.entry || '/src/main',
+              entry: options.entry || '',
               input: config.build.rollupOptions.input,
               pages: options.pages,
               pagesDir: options.pagesDir,
               pageName,
               pageTitle: page.title,
-              pageEntry: page.entry || 'main',
+              pageEntry: page.entry || '',
               extraData: { url, base: config.base },
               jumpTarget: options.jumpTarget,
               injectOptions: page.inject,
