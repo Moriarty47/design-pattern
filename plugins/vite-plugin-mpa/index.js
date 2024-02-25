@@ -1,7 +1,7 @@
 import path from 'path';
 import { parse } from 'url';
 import micromatch from 'micromatch';
-import { getHtmlContent, getPageData, getPages, getTitle, isMPA, matchJsCreateRule, resolve } from './utils';
+import { getHtmlContent, getPageData, getPages, getTitle, isMPA, matchJsCreateRule, posixPath, resolve } from './utils';
 import getFirstLineSync from '../../helpers/getFirstLineSync';
 
 const PLUGIN_NAME = 'vite-plugin-mpa';
@@ -10,7 +10,7 @@ let pageName;
 
 let i = 0;
 
-/** @typedef {import('vite').PluginOption & { pagesDir: string, jumpTarget: '_self' | '_blank' }} MpaOption */
+/** @typedef {import('vite').PluginOption & { pagesDir: string, jumpTarget: '_self' | '_blank', delay: number, root: string }} MpaOption */
 /**
  * @name vite-plugin-mpa
  * @param {Partial<MpaOption>} userOptions 
@@ -23,14 +23,30 @@ export default function vitePluginMpa(
   const options = {
     ...userOptions,
     pagesDir: userOptions.pagesDir || 'src/pages',
+    jumpTarget: '_self',
     appType: 'mpa',
-    jumpTarget: '_self'
+    delay: 500,
   };
 
+  let root = process.cwd();
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
   /** @type {import('vite').UserConfig} */
   let config;
   let jsGlobs;
   let htmlGlobs;
+
+  const fileFirstLineCache = {};
+
+  function clear() {
+    clearTimeout(timer);
+  }
+
+  /** @param {() => void} fn */
+  function schedule(fn) {
+    clear();
+    timer = setTimeout(fn, options.delay);
+  }
 
   return {
     enforce: 'post',
@@ -47,18 +63,24 @@ export default function vitePluginMpa(
     configResolved(resolvedConfig) {
       const isBuild = resolvedConfig.mode === 'production';
 
-      root = resolvedConfig.root;
-
       const dir = options.pagesDir;
-      jsGlobs = [
-        `${dir}/index.js`,
+
+      /* famous last words, but this *appears* to always be an absolute path
+      with all slashes normalized to forward slashes `/`. this is compatible
+      with path.posix.join, so we can use it to make an absolute path glob */
+      root = resolvedConfig.root;
+      options.root = root;
+
+      jsGlobs = posixPath([
+        `${dir}/*.js`,
         `${dir}/*/*.js`,
-      ];
-      htmlGlobs = [
+      ], root);
+      htmlGlobs = posixPath([
         `${dir}/index.html`,
         `${dir}/*/*.html`,
-      ];
+      ], root);
 
+      options.fileFirstLineCache = fileFirstLineCache;
       if (!options.pages) {
         const { pages, input } = getPages(options);
         options.pages = pages;
@@ -69,27 +91,36 @@ export default function vitePluginMpa(
     configureServer(server) {
       const allGlobs = [...jsGlobs, ...htmlGlobs];
       server.watcher.add(allGlobs);
-      server.watcher.on('unlink', handleFileUnlink);
-      server.watcher.on('change', handleFileChange);
       server.watcher.on('add', handleFileAdd);
+      server.watcher.on('change', handleFileChange);
+      server.watcher.on('unlink', handleFileUnlink);
 
       function handleFileAdd(file) {
-        isMatchGlobs('add', file);
+        isMatchGlobs('add', file, () => {
+          fileFirstLineCache[file] = null;
+        });
       }
 
       function handleFileChange(file) {
         const firstLine = getFirstLineSync(file);
-        if (micromatch.isMatch(file, jsGlobs) && getTitle(firstLine)) {
-          console.log('js changed', file);
-          server.restart();
+        if (micromatch.isMatch(file, jsGlobs)) {
+          const title = getTitle(firstLine);
+          const oldTitle = fileFirstLineCache[file];
+          if (oldTitle !== title) {
+            fileFirstLineCache[file] = title;
+            console.log('entry js title changed :>>', file);
+            server.restart();
+          }
         } else if (micromatch.isMatch(file, htmlGlobs) && !matchJsCreateRule(firstLine)) {
-          console.log('html changed', file);
+          console.log('html changed :>>', file);
           server.restart();
         }
       }
 
       function handleFileUnlink(file) {
-        isMatchGlobs('unlink', file);
+        isMatchGlobs('unlink', file, () => {
+          fileFirstLineCache[file] = null;
+        });
       }
 
       function isMatchGlobs(type, file, fn) {
@@ -186,6 +217,6 @@ export default function vitePluginMpa(
         }
       }
       return null;
-    }
+    },
   };
 }

@@ -2,6 +2,7 @@
 node_modules
 .idea
 dist
+.cache
 
 # Files
 .DS_Store

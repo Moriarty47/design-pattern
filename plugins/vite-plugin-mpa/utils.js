@@ -50,6 +50,16 @@ export function toArray(arr) {
   return [arr];
 }
 
+export function posixPath(p, root = process.cwd()) {
+  const paths = toArray(p);
+  return paths.map(i => {
+    if (i.startsWith('!')) {
+      return `!${path.posix.join(root, i.slice(1))}`;
+    }
+    return path.posix.join(root, i);
+  });
+};
+
 export function matchHtmlCreateRule(content) {
   return content.match(/\/\* (.*) \*\//)?.[1];
 }
@@ -134,30 +144,31 @@ function getFilesOfTargetDir(dir) {
  * 
  * @param {string} templateUrl 
  * @param {FileInfo} file 
- * @param {MpaPages} pages 
- * @param {MpaInput} input 
+ * @param {{{ pages: MpaPages, input: MpaInput }}} cache 
+ * @param {import('./index').MpaOption} options  
  * @param {string} [title='New Page'] 
  */
-function saveInfo(templateUrl, file, pages, input, title = 'New Page') {
+function saveInfo(templateUrl, file, cache, options, title = 'New Page') {
   const pageUrl = `${file.fileDirPath}/${file.filename}`;
-  if (!pages[pageUrl]) {
-    pages[pageUrl] = {
+  if (!cache.pages[pageUrl]) {
+    options.fileFirstLineCache[file.fileAbsUrl] = title;
+    cache.pages[pageUrl] = {
       title,
       filename: file.filename,
       template: templateUrl,
       entry: file.fileFullname.match(/.html$/) ? undefined : file.fileFullname,
     };
-    input[pageUrl] = templateUrl;
+    cache.input[pageUrl] = templateUrl;
   }
 }
 
 /**
  * 处理JS文件
  * @param {FileInfo} file
- * @param {MpaPages} pages 
- * @param {MpaInput} input 
+ * @param {{{ pages: MpaPages, input: MpaInput }}} cache 
+ * @param {import('./index').MpaOption} options  
  */
-function processJsFile(file, pages, input) {
+function processJsFile(file, cache, options) {
   const { fileAbsUrl, filename } = file;
   const title = getTitle(getFirstLineSync(fileAbsUrl));
   // 不是一个入口文件
@@ -175,7 +186,7 @@ function processJsFile(file, pages, input) {
     log('创建HTML文件', htmlAbsUrl);
   }
 
-  saveInfo(htmlAbsUrl, file, pages, input, title);
+  saveInfo(htmlAbsUrl, file, cache, options, title);
 }
 
 function getHtmlTitle(content) {
@@ -185,10 +196,10 @@ function getHtmlTitle(content) {
 /**
  * 处理HTML文件
  * @param {FileInfo} file
- * @param {MpaPages} pages 
- * @param {MpaInput} input 
+ * @param {{{ pages: MpaPages, input: MpaInput }}} cache 
+ * @param {import('./index').MpaOption} options  
  */
-function processHtmlFile(file, pages, input) {
+function processHtmlFile(file, cache, options) {
   const { fileAbsUrl, filename } = file;
   const matched = matchJsCreateRule(getFirstLineSync(fileAbsUrl));
   if (matched) {
@@ -199,11 +210,11 @@ function processHtmlFile(file, pages, input) {
       fs.writeFileSync(jsAbsUrl, `/* ${filename} */`, { encoding: 'utf-8' });
       log('创建JS文件', jsAbsUrl);
     }
-    saveInfo(fileAbsUrl, file, pages, input);
+    saveInfo(fileAbsUrl, file, cache, options);
   } else {
     log('不需要JS文件', filename);
     const title = getHtmlTitle(fs.readFileSync(fileAbsUrl, 'utf-8'));
-    saveInfo(fileAbsUrl, file, pages, input, title);
+    saveInfo(fileAbsUrl, file, cache, options, title);
   }
 
 }
@@ -211,20 +222,23 @@ function processHtmlFile(file, pages, input) {
 /**
  * 处理文件
  * @param {FileInfo[]} files 
+ * @param {import('./index').MpaOption} options 
  * @returns {{ pages: MpaPages, input: MpaInput }}
  */
-function processFiles(files) {
-  const pages = {};
-  const input = {};
+function processFiles(files, options) {
+  const cache = { pages: {}, input: {} };
   for (let i = 0, len = files.length; i < len; i += 1) {
     const file = files[i];
     if (file.fileExt === 'js') {
-      processJsFile(file, pages, input);
+      processJsFile(file, cache, options);
     } else if (file.fileExt === 'html') {
-      processHtmlFile(file, pages, input);
+      processHtmlFile(file, cache, options);
     }
   }
-  return { pages, input };
+  // log('files', files);
+  // log('pages', cache.pages);
+  // log('input', cache.input);
+  return cache;
 }
 
 /**
@@ -233,13 +247,10 @@ function processFiles(files) {
  * @returns {{ pages: MpaPages, input: MpaInput }}
  */
 export function getPages(options) {
-  const dir = options.pagesDir;
-  const files = getFilesOfTargetDir(dir);
-  // log('files', files);
-  const { pages, input } = processFiles(files);
-  log('pages', pages);
-  // log('input', input);
-  return { pages, input };
+  return processFiles(
+    getFilesOfTargetDir(options.pagesDir, options.root),
+    options
+  );
 }
 
 export function getPageData(options, pageName) {

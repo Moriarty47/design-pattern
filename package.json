@@ -28,6 +28,7 @@
     "@babel/plugin-proposal-decorators": "^7.23.9",
     "glob": "^10.3.10",
     "micromatch": "^4.0.5",
-    "vite-plugin-babel": "^1.2.0"
+    "vite-plugin-babel": "^1.2.0",
+    "vite-plugin-inspect": "^0.8.3"
   }
 }
