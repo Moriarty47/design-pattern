@@ -72,8 +72,8 @@ export default function vitePluginMpa(
       options.root = root;
 
       jsGlobs = posixPath([
-        `${dir}/*.js`,
-        `${dir}/*/*.js`,
+        `${dir}/*.{j,t}s`,
+        `${dir}/*/*.{j,t}s`,
       ], root);
       htmlGlobs = posixPath([
         `${dir}/index.html`,

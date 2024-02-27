@@ -78,10 +78,11 @@ export function getTitle(content) {
 
 /**
  * @param {string} htmlUrl 
+ * @param {boolean} isTs 
  * @returns {string}
  */
-function getJsUrl(htmlUrl) {
-  return htmlUrl.replace(/\.html$/, '.js');
+function getJsUrl(htmlUrl, isTs = false) {
+  return htmlUrl.replace(/\.html$/, isTs ? '.ts' : '.js');
 }
 
 /**
@@ -89,13 +90,13 @@ function getJsUrl(htmlUrl) {
  * @returns {string}
  */
 function getHtmlUrl(jsUrl) {
-  return jsUrl.replace(/\.js$/, '.html');
+  return jsUrl.replace(/\.(j|t)s$/, '.html');
 }
 
 /**
  * @typedef FileInfo
  * @property {string} fileUrl
- * @property {'js' | 'html'} fileExt
+ * @property {'js' | 'ts' | 'html'} fileExt
  * @property {string} filename
  * @property {string} fileFullname
  * @property {string} fileAbsUrl
@@ -109,11 +110,11 @@ function getHtmlUrl(jsUrl) {
  */
 function getFilesOfTargetDir(dir) {
   return globSync([
-    `${dir}/index.js`,
+    `${dir}/index.{j,t}s`,
     `${dir}/index.html`,
-    `${dir}/*/*.js`,
+    `${dir}/*/*.{j,t}s`,
     `${dir}/*/*.html`,
-    `!${dir}/index/*.js`,
+    `!${dir}/index/*.{j,t}s`,
     `!${dir}/index/*.html`,
   ])
     .map(url => {
@@ -204,11 +205,13 @@ function processHtmlFile(file, cache, options) {
   const matched = matchJsCreateRule(getFirstLineSync(fileAbsUrl));
   if (matched) {
     const jsAbsUrl = getJsUrl(fileAbsUrl);
+    const tsAbsUrl = getJsUrl(fileAbsUrl, true);
     if (!fs.existsSync(jsAbsUrl)) {
-      log('jsAbsUrl', jsAbsUrl);
-      // 该HTML文件不存在对应的JS文件，则创建JS文件
-      fs.writeFileSync(jsAbsUrl, `/* ${filename} */`, { encoding: 'utf-8' });
-      log('创建JS文件', jsAbsUrl);
+      if (!fs.existsSync(tsAbsUrl)) {
+        // 该HTML文件不存在对应的JS\TS文件，则创建JS文件
+        log('创建JS文件', jsAbsUrl);
+        fs.writeFileSync(jsAbsUrl, `/* ${filename} */`, { encoding: 'utf-8' });
+      }
     }
     saveInfo(fileAbsUrl, file, cache, options);
   } else {
@@ -229,7 +232,7 @@ function processFiles(files, options) {
   const cache = { pages: {}, input: {} };
   for (let i = 0, len = files.length; i < len; i += 1) {
     const file = files[i];
-    if (file.fileExt === 'js') {
+    if (file.fileExt === 'js' || file.fileExt === 'ts') {
       processJsFile(file, cache, options);
     } else if (file.fileExt === 'html') {
       processHtmlFile(file, cache, options);
@@ -339,13 +342,14 @@ export async function getHtmlContent(options) {
   const links = inputKeys.map(item => {
     if (pagesKeys.includes(item)) {
       const href = getHref(item, pages[item].urlParams);
-      return `<li><a target="${jumpTarget}" href="${href}">${pages[item].title || ''}</a></li>`;
+      const className = extraData.url === href ? 'class="active"' : '';
+      return `<li><a target="${jumpTarget}" href="${href}" ${className}>${pages[item].title || ''}</a></li>`;
     }
     return `<li><a target="${jumpTarget}" href="${getHref(item)}">${item}</a></li>`;
   });
 
   if (links?.length) {
-    content = content.replace(/\n|\r/g, '').replace(/<body(.*?)>(.*)<\/body>/, (_, $1, $2) => `<body${$1}><ul>${links.join('').replace(/,/g, ' ')}</ul>\n${$2}</body>`);
+    content = content.replace(/\n|\r/g, '').replace(/<body(.*?)>(.*)<\/body>/, (_, $1, $2) => `<body${$1}><ul><style>.active{color: red;}</style>${links.join('').replace(/,/g, ' ')}</ul>\n${$2}</body>`);
   }
   if (isMPA) {
     if (entryJsPath) {
@@ -383,6 +387,6 @@ export async function getHtmlContent(options) {
  * @property {string} templatePath
  */;
 
-export function log(label = 'Output', obj) {
-  console.log(`\n${label} >>>>>> \n`, obj);
+export function log(label = 'Output', ...obj) {
+  console.log(`\n${label} >>>>>> \n`, ...obj);
 }
