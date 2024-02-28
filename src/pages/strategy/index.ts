@@ -127,25 +127,6 @@ function askPrice(tag, originPrice) {
 
 askPrice('backPrice', 100);
 
-addLabel('使用策略模式实现缓动动画');
-addHtml(`
-<div style="position: relative; width: 100%; height: 60px">
-  <div
-    id="cube"
-    style="
-      position: absolute;
-      background-color: blue;
-      width: 50px;
-      height: 50px;
-      border-radius: 100px;
-      text-align: center;
-      line-height: 50px;
-    "
-  >
-    Cube
-  </div>
-</div>
-`);
 
 /**
  * 这些算法都接受 4 个参数，这 4 个参数的含义分别是
@@ -191,7 +172,7 @@ type WritableKeys<T> = {
 
 type PropertyName<T = CSSStyleDeclaration> = keyof Pick<T, WritableKeys<T>> & string;
 
-class Animate {
+export class Animate {
   dom: HTMLElement;
   startTime: number;
   startPos: number;
@@ -286,20 +267,9 @@ function animateCube() {
   document.body.appendChild(btns);
 }
 
-animateCube();
+// animateCube();
 
-addLabel('使用策略模式实现表单校验');
-
-addHtml(`
-<form action="#" id="registerForm" method="post">
-  <label>请输入用户名&emsp;: <input type="text" name="userName"/ ></label><br />
-  <label>请输入密码&emsp;&emsp;: <input type="text" name="password"/ ></label><br />
-  <label>请输入手机号码: <input type="text" name="phoneNumber"/ ></label><br />
-  <button>提交</button>
-</form>
-`);
-
-const form = document.getElementById('registerForm')!;
+// const form = document.getElementById('registerForm')!;
 
 /* 
 // 函数庞大，缺乏弹性，违反开放封闭原则，复用性差
@@ -379,34 +349,34 @@ class Validator {
 
 
 
-form.validate = () => {
-  const validator = new Validator(form);
-  validator.add('userName', [
-    {
-      rule: 'isNotEmpty',
-      errorMsg: '用户名不能为空!',
-    },
-    {
-      rule: 'minLength:10',
-      errorMsg: '用户名长度不能小于 10 位!',
-    },
-  ]);
-  validator.add('password', [{
-    rule: 'minLength:6',
-    errorMsg: '密码长度不能少于 6 位!'
-  }]);
-  validator.add('phoneNumber', [{
-    rule: 'isMobile',
-    errorMsg: '手机号码格式不正确!'
-  }]);
+// form.validate = () => {
+//   const validator = new Validator(form);
+//   validator.add('userName', [
+//     {
+//       rule: 'isNotEmpty',
+//       errorMsg: '用户名不能为空!',
+//     },
+//     {
+//       rule: 'minLength:10',
+//       errorMsg: '用户名长度不能小于 10 位!',
+//     },
+//   ]);
+//   validator.add('password', [{
+//     rule: 'minLength:6',
+//     errorMsg: '密码长度不能少于 6 位!'
+//   }]);
+//   validator.add('phoneNumber', [{
+//     rule: 'isMobile',
+//     errorMsg: '手机号码格式不正确!'
+//   }]);
 
-  return validator.start();
-};
+//   return validator.start();
+// };
 
-form.onsubmit = () => {
-  const errorMsg = form.validate();
-  if (errorMsg) {
-    console.log('errorMsg :>>', errorMsg);
-    return false;
-  }
-};
+// form.onsubmit = () => {
+//   const errorMsg = form.validate();
+//   if (errorMsg) {
+//     console.log('errorMsg :>>', errorMsg);
+//     return false;
+//   }
+// };
